@@ -1,0 +1,74 @@
+name: ECS deploy
+description:
+
+inputs:
+  environment:
+    description: Environment file name
+    required: true
+
+  image:
+    description: Docker image to deploy
+    required: true
+
+  config-repository:
+    description: Respository where environment config is stored
+    required: true
+
+  token:
+    description: Github token to access environment repository
+    required: true
+
+  repository-ref:
+    description: Branch or tag in env repository to checkout
+    required: false
+    default: main
+
+  aws-access-key-id:
+    description: AWS access key id
+    required: true
+
+  aws-secret-access-key:
+    description: AWS secret access key
+    required: true
+
+  aws-region:
+    description: AWS region
+    required: true
+
+runs:
+  using: "composite"
+
+  steps:
+    - uses: actions/checkout@v2
+      with:
+        repository: ${{ github.event.inputs.envRepository }}
+        token: ${{ github.event.inputs.token }}
+        ref: ${{ github.event.inputs.repositoryRef }}
+
+    - name: Set env
+      run: cat ${{ github.event.inputs.environment }} >> $GITHUB_ENV
+
+    - name: Render Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ${{ env.TASK_DEFINITION }}
+        container-name: ${{ env.SERVICE_NAME }}
+        image:  ${{ github.event.inputs.image }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ github.event.inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ github.event.inputs.aws-secret-access-key }}
+        aws-region: ${{ github.event.inputs.aws-region }}
+
+    - name: Deploy to Amazon ECS
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with:
+        task-definition: ${{ steps.task-def.outputs.task-definition }}
+        service: ${{ env.ECS_SERVICE }}
+        cluster: ${{ env.ECS_CLUSTER }}
+        codedeploy-appspec: ${{ env.APPSPEC }}
+        codedeploy-application: ${{ env.SERVICE_NAME }}
+        codedeploy-deployment-group: ${{ env.CODEDEPLOY_GROUP }}
